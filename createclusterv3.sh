@@ -16,25 +16,17 @@ read resourceGroup
 echo "Enter the name of the AKS cluster:"
 read clusterName
 
-# Prompt user to choose whether to enable private cluster
-echo "Do you want to enable private cluster? (y/n)"
-read enablePrivateCluster
-
-if [[ "$enablePrivateCluster" == "y" ]]; then
-  # Set variables for private cluster
-  nodeCount=3
-  nodeSize="Standard_D2_v2"
-  enablePrivateCluster="--enable-private-cluster --enable-private-dns"
-else
-  # Set variables for regular cluster
-  nodeCount=1
-  nodeSize="Standard_B2s"
-  enablePrivateCluster=""
-fi
-
 # Prompt user to enter location
 echo "Enter the location (e.g. westeurope):"
 read location
+
+# Prompt user to enable private cluster
+echo "Do you want to enable private cluster? (y/n)"
+read privateCluster
+
+# Set variables
+nodeCount=3
+nodeSize="Standard_D2_v2"
 
 # Create resource group
 if az group create --name $resourceGroup --location $location; then
@@ -45,18 +37,33 @@ else
 fi
 
 # Create AKS cluster
-if az aks create \
-    --resource-group $resourceGroup \
-    --name $clusterName \
-    --node-count $nodeCount \
-    --node-vm-size $nodeSize \
-    --location $location \
-    $enablePrivateCluster \
-    --generate-ssh-keys; then
-  echo "AKS cluster created successfully"
+if [ "$privateCluster" == "y" ]; then
+  if az aks create \
+      --resource-group $resourceGroup \
+      --name $clusterName \
+      --node-count $nodeCount \
+      --node-vm-size $nodeSize \
+      --location $location \
+      --generate-ssh-keys \
+      --enable-private-cluster; then
+    echo "Private AKS cluster created successfully"
+  else
+    echo "Failed to create private AKS cluster"
+    exit 1
+  fi
 else
-  echo "Failed to create AKS cluster"
-  exit 1
+  if az aks create \
+      --resource-group $resourceGroup \
+      --name $clusterName \
+      --node-count $nodeCount \
+      --node-vm-size $nodeSize \
+      --location $location \
+      --generate-ssh-keys; then
+    echo "AKS cluster created successfully"
+  else
+    echo "Failed to create AKS cluster"
+    exit 1
+  fi
 fi
 
 # Get cluster credentials
@@ -68,9 +75,21 @@ else
 fi
 
 # Verify kubectl connectivity
-if kubectl get nodes; then
-  echo "kubectl connectivity verified successfully"
+if [ "$privateCluster" == "y" ]; then
+  if az aks command invoke \
+      --resource-group $resourceGroup \
+      --name $clusterName \
+      --command "kubectl get pods -n kube-system"; then
+    echo "kubectl connectivity verified successfully for private cluster"
+  else
+    echo "Failed to verify kubectl connectivity for private cluster"
+    exit 1
+  fi
 else
-  echo "Failed to verify kubectl connectivity"
-  exit 1
+  if kubectl get nodes; then
+    echo "kubectl connectivity verified successfully for non-private cluster"
+  else
+    echo "Failed to verify kubectl connectivity for non-private cluster"
+    exit 1
+  fi
 fi
