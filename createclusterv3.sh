@@ -28,12 +28,17 @@ read privateCluster
 nodeCount=3
 nodeSize="Standard_D2_v2"
 
-# Create resource group
-if az group create --name $resourceGroup --location $location; then
-  echo "Resource group created successfully"
+# Check if resource group already exists
+if az group show --name $resourceGroup &>/dev/null; then
+  echo "Resource group already exists"
 else
-  echo "Failed to create resource group"
-  exit 1
+  # Create resource group
+  if az group create --name $resourceGroup --location $location; then
+    echo "Resource group created successfully"
+  else
+    echo "Failed to create resource group"
+    exit 1
+  fi
 fi
 
 # Create AKS cluster
